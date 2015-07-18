@@ -1,0 +1,7 @@
+name = CiviCRM Extra Tokens (KAVA)
+description = Adds extra tokens to the token browser (primary address, phone, email for current user)
+core = 7.x
+package = CiviCRM
+dependencies[] = civicrm (>=4.4)
+dependencies[] = civicrm_entity
+dependencies[] = token

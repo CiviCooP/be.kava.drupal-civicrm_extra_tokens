@@ -1,0 +1,116 @@
+<?php
+
+/**
+ * Implements hook_token_info_alter.
+ * @param array $data Associative array with token data
+ */
+function civicrm_extra_tokens_token_info_alter(&$data) {
+    $cet = Civicrm_Extra_Tokens::getInstance();
+    $data = array_merge_recursive($data, array(
+        'tokens' => $cet->getValidTokens(),
+    ));
+}
+
+/**
+ * Implements hook_tokens.
+ * @param string $type Token type
+ * @param array $tokens Token strings
+ * @param array $data Extra data
+ * @param array $options Extra options
+ * @return array Replacements array
+ */
+function civicrm_extra_tokens_tokens($type, $tokens, $data = array(), $options = array()) {
+    $cet = Civicrm_Extra_Tokens::getInstance();
+    return $cet->parseTokens($type, $tokens, $data, $options);
+}
+
+/**
+ * Class Civicrm_Extra_Tokens - doet zeg maar het bovenstaande bij elkaar vegen en zo veel mogelijk cachen.
+ */
+class Civicrm_Extra_Tokens {
+
+    private static $instance = null;
+    private $contactId = null;
+    private $entityCache = array();
+
+    public static function getInstance() {
+        if (!self::$instance)
+            self::$instance = new self;
+        return self::$instance;
+    }
+
+    public function getValidTokens() {
+        return array(
+            'civicrm_contact' => array(
+                'address' => array(
+                    'name'        => 'Address',
+                    'description' => 'Primary address for a CiviCRM contact.',
+                    'type'        => 'civicrm_address',
+                ),
+                'phone'   => array(
+                    'name'        => 'Phone',
+                    'description' => 'Primary phone number for a CiviCRM contact.',
+                    'type'        => 'civicrm_phone',
+                ),
+                'email'   => array(
+                    'name'        => 'Email',
+                    'description' => 'Primary email address for a CiviCRM contact.',
+                    'type'        => 'civicrm_email',
+                ),
+            ),
+        );
+    }
+
+    public function parseTokens($type, $tokens, $data = array(), $options = array()) {
+
+        $validTokens = $this->getValidTokens();
+        if (count($tokens) == 0 || !array_key_exists($type, $validTokens)) {
+            return array();
+        }
+
+        $replacements = array();
+
+        foreach ($tokens as $token => $original) {
+
+            $token = explode(':', $token);
+            if (!array_key_exists($token[0], $validTokens[$type]))
+                continue;
+
+            if (!array_key_exists($token[0], $this->entityCache))
+                $this->entityCache[$token[0]] = $this->getEntity($validTokens[$type][$token[0]]['name']);
+
+            if($this->entityCache[$token[0]]) {
+                $token[1] = str_replace('-', '_', $token[1]);
+                $replacements[$original] = $this->entityCache[$token[0]][$token[1]];
+            } else {
+                $replacements[$original] = '';
+            }
+        }
+
+        return $replacements;
+    }
+
+    public function getEntity($entity) {
+
+        global $user;
+
+        if (!$this->contactId) {
+            try {
+                $ufmatch = civicrm_api3('UFMatch', 'getsingle', array('uf_id' => $user->uid));
+                $this->contactId = $ufmatch['contact_id'];
+            } catch (\CiviCRM_API3_Exception $e) {
+                return false;
+            }
+        }
+
+        try {
+            return civicrm_api3($entity, 'getsingle', array(
+                'contact_id' => $this->contactId,
+                'is_primary' => 1,
+            ));
+        } catch (\CiviCRM_API3_Exception $e) {
+            return array();
+        }
+    }
+
+}
